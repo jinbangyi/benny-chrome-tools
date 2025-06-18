@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "HTTP Request Watcher",
+  "version": "1.0",
+  "description": "Watch HTTP requests and execute custom JavaScript code on matching endpoints",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "webRequest",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "HTTP Request Watcher"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
