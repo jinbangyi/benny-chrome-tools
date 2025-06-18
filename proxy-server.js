@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 class ProxyServer {
-  constructor(port = 8080) {
+  constructor(port = 8081) {
     this.port = port;
     this.watchedEndpoints = new Map(); // Map of endpoint patterns to user code
     this.extensionConfig = {
@@ -428,7 +428,7 @@ class ProxyServer {
 
 // Start the proxy server if run directly
 if (require.main === module) {
-  const proxy = new ProxyServer(8080);
+  const proxy = new ProxyServer(8081);
   proxy.start();
 
   // Graceful shutdown

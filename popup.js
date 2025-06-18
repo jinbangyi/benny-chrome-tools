@@ -65,11 +65,28 @@ document.addEventListener('DOMContentLoaded', function() {
   endpointInput = document.getElementById('endpoint');
   methodSelect = document.getElementById('method');
   jsCodeTextarea = document.getElementById('jsCode');
-  startButton = document.getElementById('startButton');
-  stopButton = document.getElementById('stopButton');
-  clearButton = document.getElementById('clearButton');
-  viewLogsButton = document.getElementById('viewLogsButton');
+  startButton = document.getElementById('startWatching');
+  stopButton = document.getElementById('stopWatching');
+  clearButton = document.getElementById('clearResults');
+  viewLogsButton = document.getElementById('viewLogs');
   resultsDiv = document.getElementById('results');
+  
+  // Check if all required elements are found
+  const missingElements = [];
+  if (!statusDiv) missingElements.push('status');
+  if (!endpointInput) missingElements.push('endpoint');
+  if (!methodSelect) missingElements.push('method');
+  if (!jsCodeTextarea) missingElements.push('jsCode');
+  if (!startButton) missingElements.push('startWatching');
+  if (!stopButton) missingElements.push('stopWatching');
+  if (!clearButton) missingElements.push('clearResults');
+  if (!viewLogsButton) missingElements.push('viewLogs');
+  if (!resultsDiv) missingElements.push('results');
+  
+  if (missingElements.length > 0) {
+    console.error('Missing DOM elements:', missingElements);
+    return;
+  }
   
   // Set up event listeners
   startButton.addEventListener('click', startWatching);

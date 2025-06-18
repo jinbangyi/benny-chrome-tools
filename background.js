@@ -6,8 +6,8 @@ importScripts('safe-functions.js');
 // Proxy server configuration
 const PROXY_CONFIG = {
   host: 'localhost',
-  port: 8080,
-  baseUrl: 'http://localhost:8080'
+  port: 8081,
+  baseUrl: 'http://localhost:8081'
 };
 
 // Logging system
