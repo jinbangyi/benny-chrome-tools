@@ -2,7 +2,7 @@
 
 // Registry of safe functions that can be executed
 const SAFE_FUNCTIONS = {
-  'BUILDIN_monthly-sum': function(response) {
+  'BUILDIN_birdeye-metrics': function(response) {
     try {
       let data;
       
@@ -13,7 +13,7 @@ const SAFE_FUNCTIONS = {
       }
       
       if (!data.success || !Array.isArray(data.results)) {
-        throw new Error('Invalid data format - expected success:true and results array');
+        throw new Error(`Invalid data format - expected success:true and results array ${data}`);
       }
       
       // Group and sum by month

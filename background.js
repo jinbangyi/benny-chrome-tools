@@ -308,15 +308,15 @@ async function getResponseBody(tabId, url) {
 async function executeUserCode(responseObject, tabId) {
   try {
     // Check if the code is one of our predefined safe functions
-    if (watchConfig.jsCode.includes('BUILDIN_monthly-sum') || watchConfig.jsCode.includes('PRICE_DATA')) {
-      return SAFE_FUNCTIONS['BUILDIN_monthly-sum'](responseObject);
+    if (watchConfig.jsCode.includes('BUILDIN_birdeye-metrics')) {
+      return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
     }
     
-    if (watchConfig.jsCode.includes('simple-log')) {
+    if (watchConfig.jsCode.includes('BUILDIN_simple-log')) {
       return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
     }
     
-    if (watchConfig.jsCode.includes('count-records')) {
+    if (watchConfig.jsCode.includes('BUILDIN_count-records')) {
       return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
     }
     
