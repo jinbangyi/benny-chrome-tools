@@ -202,11 +202,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       await checkProxyServerStatus();
       sendResponse({ status: proxyServerStatus });
       break;
-    case 'shouldProxyRequest':
-      const shouldProxy = isWatching && proxyServerStatus.isRunning && 
-                         matchesEndpoint(message.url, message.method);
-      sendResponse({ shouldProxy });
-      break;
     case 'getResults':
       // Merge local and proxy results
       const proxyResults = await getProxyResults();
@@ -310,10 +305,13 @@ function startRequestMonitoring() {
     );
   }
 
-  // Inject content script for proxy communication if proxy is available
-  if (proxyServerStatus.isRunning) {
-    console.log('Proxy server available, enabling enhanced request interception');
-    injectProxyContentScript();
+  // Add redirect listener for proxy integration
+  if (proxyServerStatus.isRunning && !chrome.webRequest.onBeforeRequest.hasListener(handleProxyRedirect)) {
+    chrome.webRequest.onBeforeRequest.addListener(
+      handleProxyRedirect,
+      { urls: ["<all_urls>"] },
+      ["blocking", "requestBody"]
+    );
   }
 }
 
@@ -326,114 +324,34 @@ function stopRequestMonitoring() {
   if (chrome.webRequest.onCompleted.hasListener(handleResponse)) {
     chrome.webRequest.onCompleted.removeListener(handleResponse);
   }
+
+  if (chrome.webRequest.onBeforeRequest.hasListener(handleProxyRedirect)) {
+    chrome.webRequest.onBeforeRequest.removeListener(handleProxyRedirect);
+  }
 }
 
 // Store request details for later processing
 const requestData = new Map();
 
-// Inject content script for proxy communication
-async function injectProxyContentScript() {
-  try {
-    // Get all tabs
-    const tabs = await chrome.tabs.query({});
-    
-    for (const tab of tabs) {
-      // Skip chrome:// and other restricted URLs
-      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-        continue;
-      }
-      
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: injectProxyInterceptor,
-          args: [PROXY_CONFIG]
-        });
-        console.log('Injected proxy interceptor into tab:', tab.url);
-      } catch (error) {
-        console.log('Could not inject into tab:', tab.url, error.message);
-      }
-    }
-  } catch (error) {
-    console.error('Error injecting proxy content script:', error);
-  }
-}
+// Handle proxy redirect for matching requests
+function handleProxyRedirect(details) {
+  if (!isWatching || !proxyServerStatus.isRunning) return {};
 
-// Function to be injected into pages for proxy interception
-function injectProxyInterceptor(proxyConfig) {
-  // Only inject once
-  if (window.httpWatcherProxyInjected) return;
-  window.httpWatcherProxyInjected = true;
-  
-  console.log('[HTTP-Watcher] Proxy interceptor injected');
-  
-  // Store original fetch and XMLHttpRequest
-  const originalFetch = window.fetch;
-  const originalXHROpen = XMLHttpRequest.prototype.open;
-  const originalXHRSend = XMLHttpRequest.prototype.send;
-  
-  // Override fetch to route through proxy when needed
-  window.fetch = async function(input, init = {}) {
-    const url = typeof input === 'string' ? input : input.url;
-    
-    // Check if we should proxy this request
-    const shouldProxy = await checkShouldProxy(url, init.method || 'GET');
-    
-    if (shouldProxy) {
-      console.log('[HTTP-Watcher] Routing request through proxy:', url);
-      
-      // Route through proxy
-      return originalFetch(`${proxyConfig.baseUrl}/proxy`, {
-        ...init,
-        headers: {
-          ...init.headers,
-          'X-Target-URL': url
-        }
-      });
-    }
-    
-    return originalFetch(input, init);
-  };
-  
-  // Override XMLHttpRequest
-  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-    this._httpWatcherMethod = method;
-    this._httpWatcherUrl = url;
-    
-    return originalXHROpen.call(this, method, url, async, user, password);
-  };
-  
-  XMLHttpRequest.prototype.send = async function(data) {
-    const shouldProxy = await checkShouldProxy(this._httpWatcherUrl, this._httpWatcherMethod);
-    
-    if (shouldProxy) {
-      console.log('[HTTP-Watcher] Routing XHR through proxy:', this._httpWatcherUrl);
-      
-      // Modify the request to go through proxy
-      const proxyUrl = `${proxyConfig.baseUrl}/proxy`;
-      this.setRequestHeader('X-Target-URL', this._httpWatcherUrl);
-      
-      // Update the URL to proxy
-      this._httpWatcherOriginalUrl = this._httpWatcherUrl;
-      originalXHROpen.call(this, this._httpWatcherMethod, proxyUrl, true);
-    }
-    
-    return originalXHRSend.call(this, data);
-  };
-  
-  async function checkShouldProxy(url, method) {
-    // Ask background script if this request should be proxied
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'shouldProxyRequest',
-        url: url,
-        method: method
-      });
-      return response && response.shouldProxy;
-    } catch (error) {
-      return false;
-    }
+  // Check if this request matches our endpoint
+  if (!matchesEndpoint(details.url, details.method)) {
+    return {};
   }
+
+  console.log('Redirecting request through proxy:', details.url);
+
+  // Redirect through proxy server
+  return {
+    redirectUrl: `${PROXY_CONFIG.baseUrl}/proxy`,
+    requestHeaders: [
+      ...details.requestHeaders || [],
+      { name: 'X-Target-URL', value: details.url }
+    ]
+  };
 }
 
 // Handle request start (for non-proxy monitoring)

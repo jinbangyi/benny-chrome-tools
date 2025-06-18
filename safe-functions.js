@@ -13,7 +13,7 @@ const SAFE_FUNCTIONS = {
       }
       
       if (!data.success || !Array.isArray(data.results)) {
-        throw new Error(`Invalid data format - expected success:true and results array ${data}`);
+        throw new Error(`Invalid data format - expected success:true and results array ${JSON.stringify(data)}`);
       }
       
       // Group and sum by month

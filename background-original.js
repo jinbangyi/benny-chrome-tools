@@ -1,18 +1,11 @@
-// Enhanced background script with proxy server integration
+// background.js - Service worker that handles HTTP request monitoring
 
 // Import safe functions
 importScripts('safe-functions.js');
 
-// Proxy server configuration
-const PROXY_CONFIG = {
-  host: 'localhost',
-  port: 8080,
-  baseUrl: 'http://localhost:8080'
-};
-
 // Logging system
 let extensionLogs = [];
-const MAX_LOGS = 1000;
+const MAX_LOGS = 1000; // Maximum number of logs to keep
 
 // Override console methods to capture logs
 const originalConsole = {
@@ -38,16 +31,19 @@ function logToStorage(level, source, ...args) {
   
   extensionLogs.push(logEntry);
   
+  // Keep only the last MAX_LOGS entries
   if (extensionLogs.length > MAX_LOGS) {
     extensionLogs = extensionLogs.slice(-MAX_LOGS);
   }
   
+  // Save to storage periodically (every 10 logs)
   if (extensionLogs.length % 10 === 0) {
     chrome.storage.local.set({ extensionLogs: extensionLogs }).catch(err => {
       originalConsole.error('Failed to save logs to storage:', err);
     });
   }
   
+  // Call original console method
   originalConsole[level](`[${source.toUpperCase()}]`, ...args);
 }
 
@@ -66,18 +62,12 @@ let watchConfig = {
 };
 let results = [];
 
-// Proxy server integration
-let proxyServerStatus = {
-  isRunning: false,
-  lastCheck: 0
-};
-
 // Initialize when extension starts
 chrome.runtime.onStartup.addListener(initialize);
 chrome.runtime.onInstalled.addListener(initialize);
 
 async function initialize() {
-  console.log('Extension initializing with proxy integration...');
+  console.log('Extension initializing...');
   try {
     const stored = await chrome.storage.local.get(['isWatching', 'endpoint', 'method', 'jsCode', 'results']);
     console.log('Loaded stored configuration:', stored);
@@ -88,137 +78,34 @@ async function initialize() {
       watchConfig.jsCode = stored.jsCode || '';
       results = stored.results || [];
       console.log('Restoring watch state with config:', watchConfig);
-      await startWatching(watchConfig);
+      startRequestMonitoring();
     } else {
       console.log('Extension not previously watching, starting fresh');
     }
-
-    // Check proxy server status
-    await checkProxyServerStatus();
   } catch (error) {
     console.error('Error initializing:', error);
   }
 }
 
-// Check if proxy server is running
-async function checkProxyServerStatus() {
-  try {
-    const response = await fetch(`${PROXY_CONFIG.baseUrl}/status`);
-    if (response.ok) {
-      const status = await response.json();
-      proxyServerStatus = {
-        isRunning: true,
-        lastCheck: Date.now(),
-        ...status
-      };
-      console.log('Proxy server is running:', status);
-      return true;
-    }
-  } catch (error) {
-    console.log('Proxy server not available:', error.message);
-  }
-  
-  proxyServerStatus = {
-    isRunning: false,
-    lastCheck: Date.now()
-  };
-  return false;
-}
-
-// Sync configuration with proxy server
-async function syncConfigWithProxy() {
-  if (!proxyServerStatus.isRunning) {
-    console.log('Proxy server not available, skipping sync');
-    return;
-  }
-
-  try {
-    const response = await fetch(`${PROXY_CONFIG.baseUrl}/config`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        isWatching: isWatching,
-        endpoint: watchConfig.endpoint,
-        method: watchConfig.method,
-        jsCode: watchConfig.jsCode
-      })
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log('Configuration synced with proxy server:', result);
-    } else {
-      console.error('Failed to sync config with proxy server:', response.status);
-    }
-  } catch (error) {
-    console.error('Error syncing config with proxy server:', error);
-  }
-}
-
-// Get results from proxy server
-async function getProxyResults() {
-  if (!proxyServerStatus.isRunning) {
-    return [];
-  }
-
-  try {
-    const response = await fetch(`${PROXY_CONFIG.baseUrl}/results`);
-    if (response.ok) {
-      const data = await response.json();
-      return data.results || [];
-    }
-  } catch (error) {
-    console.error('Error getting proxy results:', error);
-  }
-  return [];
-}
-
 // Listen for messages from popup and content scripts
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'startWatching':
-      await startWatching(message);
-      sendResponse({ success: true });
+      startWatching(message);
       break;
     case 'stopWatching':
-      await stopWatching();
-      sendResponse({ success: true });
+      stopWatching();
       break;
     case 'clearResults':
-      await clearResults();
-      sendResponse({ success: true });
+      clearResults();
       break;
     case 'httpRequestIntercepted':
-      await handleInterceptedRequest(message.data);
-      sendResponse({ success: true });
+      handleInterceptedRequest(message.data);
       break;
     case 'addLog':
       handleLogFromContentScript(message.logEntry);
-      sendResponse({ success: true });
       break;
-    case 'getProxyStatus':
-      await checkProxyServerStatus();
-      sendResponse({ status: proxyServerStatus });
-      break;
-    case 'shouldProxyRequest':
-      const shouldProxy = isWatching && proxyServerStatus.isRunning && 
-                         matchesEndpoint(message.url, message.method);
-      sendResponse({ shouldProxy });
-      break;
-    case 'getResults':
-      // Merge local and proxy results
-      const proxyResults = await getProxyResults();
-      const allResults = [...results, ...proxyResults]
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 50);
-      sendResponse({ results: allResults });
-      break;
-    default:
-      sendResponse({ success: false, error: 'Unknown action' });
   }
-  return true; // Keep message channel open for async response
 });
 
 // Start watching for requests
@@ -243,21 +130,12 @@ async function startWatching(config) {
     jsCode: config.jsCode
   });
 
-  // Check proxy server and sync config
-  await checkProxyServerStatus();
-  if (proxyServerStatus.isRunning) {
-    await syncConfigWithProxy();
-    console.log('Using proxy server for enhanced response body access');
-  } else {
-    console.log('Proxy server not available, using webRequest API (limited response body access)');
-  }
-
   startRequestMonitoring();
   
   console.log('Request monitoring started successfully');
   
   // Notify popup
-  notifyPopup('statusUpdate', { isWatching: true, proxyStatus: proxyServerStatus });
+  notifyPopup('statusUpdate', { isWatching: true });
 }
 
 // Stop watching for requests
@@ -269,17 +147,12 @@ async function stopWatching() {
   // Save state
   await chrome.storage.local.set({ isWatching: false });
   
-  // Sync with proxy server
-  if (proxyServerStatus.isRunning) {
-    await syncConfigWithProxy();
-  }
-  
   stopRequestMonitoring();
   
   console.log('Request monitoring stopped');
   
   // Notify popup
-  notifyPopup('statusUpdate', { isWatching: false, proxyStatus: proxyServerStatus });
+  notifyPopup('statusUpdate', { isWatching: false });
 }
 
 // Clear results
@@ -309,12 +182,6 @@ function startRequestMonitoring() {
       ["responseHeaders"]
     );
   }
-
-  // Inject content script for proxy communication if proxy is available
-  if (proxyServerStatus.isRunning) {
-    console.log('Proxy server available, enabling enhanced request interception');
-    injectProxyContentScript();
-  }
 }
 
 // Stop monitoring HTTP requests
@@ -331,114 +198,9 @@ function stopRequestMonitoring() {
 // Store request details for later processing
 const requestData = new Map();
 
-// Inject content script for proxy communication
-async function injectProxyContentScript() {
-  try {
-    // Get all tabs
-    const tabs = await chrome.tabs.query({});
-    
-    for (const tab of tabs) {
-      // Skip chrome:// and other restricted URLs
-      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-        continue;
-      }
-      
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: injectProxyInterceptor,
-          args: [PROXY_CONFIG]
-        });
-        console.log('Injected proxy interceptor into tab:', tab.url);
-      } catch (error) {
-        console.log('Could not inject into tab:', tab.url, error.message);
-      }
-    }
-  } catch (error) {
-    console.error('Error injecting proxy content script:', error);
-  }
-}
-
-// Function to be injected into pages for proxy interception
-function injectProxyInterceptor(proxyConfig) {
-  // Only inject once
-  if (window.httpWatcherProxyInjected) return;
-  window.httpWatcherProxyInjected = true;
-  
-  console.log('[HTTP-Watcher] Proxy interceptor injected');
-  
-  // Store original fetch and XMLHttpRequest
-  const originalFetch = window.fetch;
-  const originalXHROpen = XMLHttpRequest.prototype.open;
-  const originalXHRSend = XMLHttpRequest.prototype.send;
-  
-  // Override fetch to route through proxy when needed
-  window.fetch = async function(input, init = {}) {
-    const url = typeof input === 'string' ? input : input.url;
-    
-    // Check if we should proxy this request
-    const shouldProxy = await checkShouldProxy(url, init.method || 'GET');
-    
-    if (shouldProxy) {
-      console.log('[HTTP-Watcher] Routing request through proxy:', url);
-      
-      // Route through proxy
-      return originalFetch(`${proxyConfig.baseUrl}/proxy`, {
-        ...init,
-        headers: {
-          ...init.headers,
-          'X-Target-URL': url
-        }
-      });
-    }
-    
-    return originalFetch(input, init);
-  };
-  
-  // Override XMLHttpRequest
-  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-    this._httpWatcherMethod = method;
-    this._httpWatcherUrl = url;
-    
-    return originalXHROpen.call(this, method, url, async, user, password);
-  };
-  
-  XMLHttpRequest.prototype.send = async function(data) {
-    const shouldProxy = await checkShouldProxy(this._httpWatcherUrl, this._httpWatcherMethod);
-    
-    if (shouldProxy) {
-      console.log('[HTTP-Watcher] Routing XHR through proxy:', this._httpWatcherUrl);
-      
-      // Modify the request to go through proxy
-      const proxyUrl = `${proxyConfig.baseUrl}/proxy`;
-      this.setRequestHeader('X-Target-URL', this._httpWatcherUrl);
-      
-      // Update the URL to proxy
-      this._httpWatcherOriginalUrl = this._httpWatcherUrl;
-      originalXHROpen.call(this, this._httpWatcherMethod, proxyUrl, true);
-    }
-    
-    return originalXHRSend.call(this, data);
-  };
-  
-  async function checkShouldProxy(url, method) {
-    // Ask background script if this request should be proxied
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'shouldProxyRequest',
-        url: url,
-        method: method
-      });
-      return response && response.shouldProxy;
-    } catch (error) {
-      return false;
-    }
-  }
-}
-
-// Handle request start (for non-proxy monitoring)
+// Handle request start
 function handleRequest(details) {
-  if (!isWatching || proxyServerStatus.isRunning) return; // Skip if using proxy
+  if (!isWatching) return;
   
   console.log('Intercepting request:', details.method, details.url);
   
@@ -448,43 +210,51 @@ function handleRequest(details) {
     requestBody: details.requestBody,
     timestamp: Date.now()
   });
+  
+  console.log('Stored request data for ID:', details.requestId);
 }
 
-// Handle request completion (for non-proxy monitoring)
+// Handle request completion
 async function handleResponse(details) {
-  if (!isWatching || proxyServerStatus.isRunning) return; // Skip if using proxy
+  if (!isWatching) return;
   
   console.log('Handling response for:', details.url, 'Status:', details.statusCode);
   
   const requestInfo = requestData.get(details.requestId);
   if (!requestInfo) {
+    console.log('No request info found for ID:', details.requestId);
     return;
   }
 
+  // Clean up
   requestData.delete(details.requestId);
 
+  // Check if this request matches our endpoint
   if (!matchesEndpoint(requestInfo.url, requestInfo.method)) {
+    console.log('Request does not match endpoint pattern:', requestInfo.url);
     return;
   }
 
   console.log('Request matches endpoint! Processing...', requestInfo.url);
 
   try {
-    // Prepare response object (limited by webRequest API)
+    // Get response body
+    const responseBody = await getResponseBody(details.tabId, details.url);
+    
+    // Prepare response object for user function
     const responseObject = {
       url: requestInfo.url,
       method: requestInfo.method,
       status: details.statusCode,
       headers: details.responseHeaders || [],
-      body: { 
-        message: 'Response body not available via webRequest API. Use proxy server for full access.',
-        note: 'Start proxy server with: node proxy-server.js'
-      },
+      body: responseBody,
       requestBody: requestInfo.requestBody
     };
     
-    const result = await executeUserCodeSimple(responseObject);
+    // Execute user's JavaScript code
+    const result = await executeUserCode(responseObject, details.tabId);
     
+    // Store result
     const resultEntry = {
       timestamp: Date.now(),
       url: requestInfo.url,
@@ -493,10 +263,13 @@ async function handleResponse(details) {
       result: result
     };
     
-    results.unshift(resultEntry);
-    results = results.slice(0, 50);
+    results.unshift(resultEntry); // Add to beginning
+    results = results.slice(0, 50); // Keep only last 50 results
     
+    // Save results
     await chrome.storage.local.set({ results: results });
+    
+    // Notify popup
     notifyPopup('newResult', resultEntry);
     
   } catch (error) {
@@ -522,66 +295,135 @@ async function handleResponse(details) {
 function matchesEndpoint(url, method) {
   if (!watchConfig.endpoint) return false;
   
+  // Check method
   if (watchConfig.method !== '*' && watchConfig.method !== method) {
     return false;
   }
   
+  // Check URL (support wildcards)
   const endpointPattern = watchConfig.endpoint
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\\\*/g, '.*');
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+    .replace(/\\\*/g, '.*'); // Convert * to .*
   
   const regex = new RegExp(endpointPattern, 'i');
   return regex.test(url);
 }
 
-// Execute user's JavaScript code safely
-async function executeUserCodeSimple(responseObject) {
+// Get response body by using intercepted data from content script
+async function getResponseBody(tabId, url) {
   try {
-    console.log('Executing user code for request:', responseObject.url);
+    console.log('Attempting to get response body for:', url);
     
-    // Check for new BUILDIN_ naming convention
+    // Since webRequest API has limitations, we rely on content script interception
+    // Return a message indicating to check intercepted requests
+    return { 
+      message: 'Response body from webRequest API is limited. Using content script interception for full response data.',
+      url: url,
+      note: 'Check intercepted requests for complete response data'
+    };
+  } catch (error) {
+    console.error('Error getting response body:', error);
+    return { error: 'Could not access response body', details: error.message };
+  }
+}
+
+// Execute user's JavaScript code safely
+async function executeUserCode(responseObject, tabId) {
+  try {
+    // Check if the code is one of our predefined safe functions
     if (watchConfig.jsCode.includes('BUILDIN_birdeye-metrics')) {
-      console.log('Using BUILDIN_birdeye-metrics function');
       return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
     }
     
     if (watchConfig.jsCode.includes('BUILDIN_simple-log')) {
-      console.log('Using BUILDIN_simple-log function');
       return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
     }
     
     if (watchConfig.jsCode.includes('BUILDIN_count-records')) {
-      console.log('Using BUILDIN_count-records function');
       return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
     }
     
-    // Legacy support
+    // For custom code, try to inject it safely in the page context
+    if (tabId && tabId !== -1) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: (responseData, userCode) => {
+          try {
+            // Create a safe execution environment
+            const func = new Function('response', userCode + '\nreturn index(response);');
+            return func(responseData);
+          } catch (error) {
+            return 'Error: ' + error.message;
+          }
+        },
+        args: [responseObject, watchConfig.jsCode]
+      });
+      
+      return results[0].result;
+    } else {
+      return `Custom code execution not available for this request type.
+URL: ${responseObject.url}
+Status: ${responseObject.status}
+Method: ${responseObject.method}
+
+Use predefined functions like 'monthly-sum' for better compatibility.`;
+    }
+    
+  } catch (error) {
+    return 'Execution error: ' + error.message;
+  }
+}
+
+// Simpler execution for intercepted requests (no tab context)
+async function executeUserCodeSimple(responseObject) {
+  try {
+    console.log('Executing simple user code for intercepted request:', responseObject.url);
+    
+    // Check for new BUILDIN_ naming convention
+    if (watchConfig.jsCode.includes('BUILDIN_birdeye-metrics')) {
+      console.log('Using BUILDIN_birdeye-metrics function for intercepted request');
+      return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
+    }
+    
+    if (watchConfig.jsCode.includes('BUILDIN_simple-log')) {
+      console.log('Using BUILDIN_simple-log function for intercepted request');
+      return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
+    }
+    
+    if (watchConfig.jsCode.includes('BUILDIN_count-records')) {
+      console.log('Using BUILDIN_count-records function for intercepted request');
+      return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
+    }
+    
+    // Legacy support for old naming
     if (watchConfig.jsCode.includes('monthly-sum') || watchConfig.jsCode.includes('PRICE_DATA')) {
-      console.log('Using legacy monthly-sum function');
+      console.log('Using legacy monthly-sum function for intercepted request');
       return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
     }
     
     if (watchConfig.jsCode.includes('simple-log')) {
-      console.log('Using legacy simple-log function');
+      console.log('Using legacy simple-log function for intercepted request');
       return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
     }
     
     if (watchConfig.jsCode.includes('count-records')) {
-      console.log('Using legacy count-records function');
+      console.log('Using legacy count-records function for intercepted request');
       return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
     }
     
+    // For other code, return a basic summary
     console.log('No matching predefined function found, returning basic summary');
-    return `Request processed:
+    return `Request intercepted:
 URL: ${responseObject.url}
 Status: ${responseObject.status}
 Method: ${responseObject.method}
-Note: Use predefined functions like 'BUILDIN_birdeye-metrics' for data processing.
-Tip: Start proxy server (node proxy-server.js) for full response body access.`;
+Data preview: ${JSON.stringify(responseObject.body).substring(0, 200)}...
+
+Note: Use predefined functions like 'BUILDIN_birdeye-metrics' for data processing.`;
     
   } catch (error) {
-    console.error('Code execution error:', error);
-    return 'Execution error: ' + error.message;
+    console.error('Simple execution error:', error);
+    return 'Simple execution error: ' + error.message;
   }
 }
 
@@ -589,11 +431,13 @@ Tip: Start proxy server (node proxy-server.js) for full response body access.`;
 async function handleInterceptedRequest(requestData) {
   if (!isWatching) return;
   
+  // Check if this request matches our endpoint
   if (!matchesEndpoint(requestData.url, requestData.method)) {
     return;
   }
   
   try {
+    // Prepare response object for user function
     const responseObject = {
       url: requestData.url,
       method: requestData.method,
@@ -603,8 +447,11 @@ async function handleInterceptedRequest(requestData) {
       requestData: requestData.requestData || requestData.requestOptions
     };
     
+    // Execute user's JavaScript code - note: no tabId available for intercepted requests
+    // Use a simpler approach for intercepted requests
     const result = await executeUserCodeSimple(responseObject);
     
+    // Store result
     const resultEntry = {
       timestamp: Date.now(),
       url: requestData.url,
@@ -613,10 +460,13 @@ async function handleInterceptedRequest(requestData) {
       result: result
     };
     
-    results.unshift(resultEntry);
-    results = results.slice(0, 50);
+    results.unshift(resultEntry); // Add to beginning
+    results = results.slice(0, 50); // Keep only last 50 results
     
+    // Save results
     await chrome.storage.local.set({ results: results });
+    
+    // Notify popup
     notifyPopup('newResult', resultEntry);
     
   } catch (error) {
@@ -642,10 +492,12 @@ async function handleInterceptedRequest(requestData) {
 function handleLogFromContentScript(logEntry) {
   extensionLogs.push(logEntry);
   
+  // Keep only the last MAX_LOGS entries
   if (extensionLogs.length > MAX_LOGS) {
     extensionLogs = extensionLogs.slice(-MAX_LOGS);
   }
   
+  // Save to storage
   chrome.storage.local.set({ extensionLogs: extensionLogs }).catch(err => {
     originalConsole.error('Failed to save content script logs:', err);
   });
@@ -657,10 +509,3 @@ function notifyPopup(action, data) {
     // Popup might not be open, ignore error
   });
 }
-
-// Periodic proxy server status check
-setInterval(async () => {
-  if (Date.now() - proxyServerStatus.lastCheck > 30000) { // Check every 30 seconds
-    await checkProxyServerStatus();
-  }
-}, 30000);

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 400px;
+      width: 450px;
       padding: 20px;
       font-family: Arial, sans-serif;
     }
@@ -17,6 +17,22 @@
     .section h3 {
       margin-top: 0;
       color: #333;
+    }
+    .proxy-status {
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    .proxy-running {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .proxy-stopped {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
     }
     input, textarea {
       width: 100%;
@@ -93,6 +109,16 @@
   </div>
 
   <div class="section">
+    <h3>Proxy Server Status</h3>
+    <div id="proxy-status" class="proxy-status proxy-stopped">
+      🔍 Checking proxy server...
+    </div>
+    <p style="font-size: 12px; color: #666; margin: 10px 0;">
+      💡 For full response body access, run: <code>node proxy-server.js</code>
+    </p>
+  </div>
+
+  <div class="section">
     <h3>Endpoint Configuration</h3>
     <label for="endpoint">HTTP Endpoint to Watch:</label>
     <input type="text" id="endpoint" placeholder="e.g., https://api.example.com/data" />
@@ -113,26 +139,25 @@
     <label for="jsCode">JavaScript Code (must have an 'index' function):</label>
     <textarea id="jsCode" placeholder="Choose from predefined functions or write custom code:
 
-1. Monthly Sum (for PRICE_DATA):
+1. Birdeye Metrics (for PRICE_DATA analysis):
 function index(response) {
-  // This will be handled by the 'monthly-sum' function
-  // Just include 'monthly-sum' or 'PRICE_DATA' in your code
-  return 'monthly-sum';
+  return 'BUILDIN_birdeye-metrics';
 }
 
 2. Simple Log:
 function index(response) {
-  return 'simple-log';
+  return 'BUILDIN_simple-log';
 }
 
 3. Count Records:
 function index(response) {
-  return 'count-records';
+  return 'BUILDIN_count-records';
 }
 
 Or write your own custom function:
 function index(response) {
   // Your code here
+  // response contains: { url, method, status, headers, body }
   return 'Custom result: ' + JSON.stringify(response.body);
 }"></textarea>
   </div>

@@ -28,19 +28,24 @@
 
     <div class="test-section">
         <h3>Predefined Functions:</h3>
-        <p><strong>Monthly Sum:</strong> Use this code:</p>
+        <p><strong>Birdeye Metrics (NEW):</strong> Use this code:</p>
         <pre>function index(response) {
-  return 'monthly-sum';
+  return 'BUILDIN_birdeye-metrics';
 }</pre>
         
         <p><strong>Simple Log:</strong> Use this code:</p>
         <pre>function index(response) {
-  return 'simple-log';
+  return 'BUILDIN_simple-log';
 }</pre>
         
         <p><strong>Count Records:</strong> Use this code:</p>
         <pre>function index(response) {
-  return 'count-records';
+  return 'BUILDIN_count-records';
+}</pre>
+
+        <p><strong>Legacy Support:</strong> Old function names still work:</p>
+        <pre>function index(response) {
+  return 'monthly-sum'; // Will use BUILDIN_birdeye-metrics
 }</pre>
     </div>
 
@@ -49,7 +54,19 @@
         <button id="testMetrics">Test Metrics API</button>
         <button id="testSimple">Test Simple Request</button>
         <button id="testError">Test Error Response</button>
+        <button id="testLogging">Test Extension Logging</button>
         <div id="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Logging Information:</h3>
+        <p>The extension now captures all console.log output from:</p>
+        <ul>
+            <li><strong>Background Script:</strong> Service worker logs</li>
+            <li><strong>Popup:</strong> Extension popup logs</li>
+            <li><strong>Content Script:</strong> Page-level logs</li>
+        </ul>
+        <p>Click the <strong>"📋 View Logs"</strong> button in the extension popup to see all captured logs!</p>
     </div>
 
     <script>
@@ -146,6 +163,41 @@
             } catch (error) {
                 document.getElementById('result').innerHTML = `<p style="color: red;">Network Error: ${error.message}</p>`;
             }
+        });
+
+        document.getElementById('testLogging').addEventListener('click', () => {
+            console.log('=== Testing Extension Logging System ===');
+            console.info('This is an INFO message from test page');
+            console.warn('This is a WARNING message from test page');
+            console.error('This is an ERROR message from test page');
+            console.debug('This is a DEBUG message from test page');
+            
+            console.log('Testing various data types:');
+            console.log('String data:', 'Hello from test page!');
+            console.log('Numeric data:', 12345);
+            console.log('Boolean data:', true);
+            console.log('Object data:', {
+                testKey: 'testValue',
+                timestamp: Date.now(),
+                nested: {
+                    array: [1, 2, 3],
+                    boolean: false
+                }
+            });
+            
+            document.getElementById('result').innerHTML = `
+                <h4>Logging Test Complete!</h4>
+                <p>Various console messages have been generated.</p>
+                <p><strong>Click "📋 View Logs" in the extension popup to see all captured logs!</strong></p>
+                <p>The logs should show messages from different sources:</p>
+                <ul>
+                    <li>Background script logs</li>
+                    <li>Content script logs</li>
+                    <li>Test page logs (this page)</li>
+                </ul>
+            `;
+            
+            console.log('=== Logging test completed ===');
         });
 
         // Also test with XMLHttpRequest
