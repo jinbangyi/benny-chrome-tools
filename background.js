@@ -3,6 +3,57 @@
 // Import safe functions
 importScripts('safe-functions.js');
 
+// Logging system
+let extensionLogs = [];
+const MAX_LOGS = 1000; // Maximum number of logs to keep
+
+// Override console methods to capture logs
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+  debug: console.debug
+};
+
+// Custom logging function
+function logToStorage(level, source, ...args) {
+  const message = args.map(arg => 
+    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+  ).join(' ');
+  
+  const logEntry = {
+    timestamp: Date.now(),
+    level: level,
+    source: source,
+    message: message
+  };
+  
+  extensionLogs.push(logEntry);
+  
+  // Keep only the last MAX_LOGS entries
+  if (extensionLogs.length > MAX_LOGS) {
+    extensionLogs = extensionLogs.slice(-MAX_LOGS);
+  }
+  
+  // Save to storage periodically (every 10 logs)
+  if (extensionLogs.length % 10 === 0) {
+    chrome.storage.local.set({ extensionLogs: extensionLogs }).catch(err => {
+      originalConsole.error('Failed to save logs to storage:', err);
+    });
+  }
+  
+  // Call original console method
+  originalConsole[level](`[${source.toUpperCase()}]`, ...args);
+}
+
+// Override console methods
+console.log = (...args) => logToStorage('info', 'background', ...args);
+console.error = (...args) => logToStorage('error', 'background', ...args);
+console.warn = (...args) => logToStorage('warn', 'background', ...args);
+console.info = (...args) => logToStorage('info', 'background', ...args);
+console.debug = (...args) => logToStorage('debug', 'background', ...args);
+
 let isWatching = false;
 let watchConfig = {
   endpoint: '',
@@ -45,11 +96,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'httpRequestIntercepted':
       handleInterceptedRequest(message.data);
       break;
+    case 'addLog':
+      handleLogFromContentScript(message.logEntry);
+      break;
   }
 });
 
 // Start watching for requests
 async function startWatching(config) {
+  console.log('Starting to watch requests for endpoint:', config.endpoint);
+  
   watchConfig = {
     endpoint: config.endpoint,
     method: config.method,
@@ -57,6 +113,8 @@ async function startWatching(config) {
   };
   
   isWatching = true;
+  
+  console.log('Watch configuration set:', watchConfig);
   
   // Save state
   await chrome.storage.local.set({
@@ -68,12 +126,16 @@ async function startWatching(config) {
 
   startRequestMonitoring();
   
+  console.log('Request monitoring started successfully');
+  
   // Notify popup
   notifyPopup('statusUpdate', { isWatching: true });
 }
 
 // Stop watching for requests
 async function stopWatching() {
+  console.log('Stopping request monitoring');
+  
   isWatching = false;
   
   // Save state
@@ -81,14 +143,20 @@ async function stopWatching() {
   
   stopRequestMonitoring();
   
+  console.log('Request monitoring stopped');
+  
   // Notify popup
   notifyPopup('statusUpdate', { isWatching: false });
 }
 
 // Clear results
 async function clearResults() {
+  console.log('Clearing all results');
+  
   results = [];
   await chrome.storage.local.set({ results: [] });
+  
+  console.log('Results cleared successfully');
 }
 
 // Start monitoring HTTP requests
@@ -372,6 +440,21 @@ async function handleInterceptedRequest(requestData) {
     await chrome.storage.local.set({ results: results });
     notifyPopup('newResult', errorEntry);
   }
+}
+
+// Handle log entries from content scripts
+function handleLogFromContentScript(logEntry) {
+  extensionLogs.push(logEntry);
+  
+  // Keep only the last MAX_LOGS entries
+  if (extensionLogs.length > MAX_LOGS) {
+    extensionLogs = extensionLogs.slice(-MAX_LOGS);
+  }
+  
+  // Save to storage
+  chrome.storage.local.set({ extensionLogs: extensionLogs }).catch(err => {
+    originalConsole.error('Failed to save content script logs:', err);
+  });
 }
 
 // Notify popup of changes

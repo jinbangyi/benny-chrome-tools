@@ -13,7 +13,8 @@ function index(response) {
         }
         
         if (!data.success || !Array.isArray(data.results)) {
-            throw new Error('Invalid data format - expected success:true and results array');
+            console.log(data)
+            throw new Error(`Invalid data format - expected success:true and results array ${data}`);
         }
         
         // Group and sum by month

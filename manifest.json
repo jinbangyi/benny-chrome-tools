@@ -24,5 +24,11 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["logs.html", "logs.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

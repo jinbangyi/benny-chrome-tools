@@ -1,9 +1,57 @@
 // content.js - Content script for enhanced HTTP monitoring
 // This script helps capture more detailed request/response information
 
+// Setup logging for content script
+function setupContentLogging() {
+  const originalConsole = {
+    log: console.log,
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+    debug: console.debug
+  };
+
+  function logToStorage(level, ...args) {
+    const message = args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    
+    const logEntry = {
+      timestamp: Date.now(),
+      level: level,
+      source: 'content',
+      message: message
+    };
+    
+    // Send to background script to handle storage
+    chrome.runtime.sendMessage({
+      action: 'addLog',
+      logEntry: logEntry
+    }).catch(() => {
+      // Extension might not be ready, use original console
+      originalConsole[level](`[CONTENT]`, ...args);
+    });
+    
+    // Call original console method
+    originalConsole[level](`[CONTENT]`, ...args);
+  }
+
+  // Override console methods
+  console.log = (...args) => logToStorage('info', ...args);
+  console.error = (...args) => logToStorage('error', ...args);
+  console.warn = (...args) => logToStorage('warn', ...args);
+  console.info = (...args) => logToStorage('info', ...args);
+  console.debug = (...args) => logToStorage('debug', ...args);
+}
+
+// Initialize logging
+setupContentLogging();
+
 // Enhanced request monitoring using fetch and XMLHttpRequest interception
 (function() {
   'use strict';
+  
+  console.log('Content script loaded and monitoring HTTP requests');
   
   // Store original functions
   const originalFetch = window.fetch;

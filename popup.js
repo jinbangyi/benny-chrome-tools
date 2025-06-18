@@ -1,12 +1,67 @@
 // popup.js - Handles the extension popup interface
 
+// Setup logging for popup
+function setupPopupLogging() {
+  const originalConsole = {
+    log: console.log,
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+    debug: console.debug
+  };
+
+  function logToStorage(level, ...args) {
+    const message = args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    
+    const logEntry = {
+      timestamp: Date.now(),
+      level: level,
+      source: 'popup',
+      message: message
+    };
+    
+    // Get existing logs and add new entry
+    chrome.storage.local.get(['extensionLogs']).then(result => {
+      const logs = result.extensionLogs || [];
+      logs.push(logEntry);
+      
+      // Keep only the last 1000 entries
+      const trimmedLogs = logs.slice(-1000);
+      
+      chrome.storage.local.set({ extensionLogs: trimmedLogs }).catch(err => {
+        originalConsole.error('Failed to save popup logs:', err);
+      });
+    }).catch(err => {
+      originalConsole.error('Failed to get existing logs:', err);
+    });
+    
+    // Call original console method
+    originalConsole[level](`[POPUP]`, ...args);
+  }
+
+  // Override console methods
+  console.log = (...args) => logToStorage('info', ...args);
+  console.error = (...args) => logToStorage('error', ...args);
+  console.warn = (...args) => logToStorage('warn', ...args);
+  console.info = (...args) => logToStorage('info', ...args);
+  console.debug = (...args) => logToStorage('debug', ...args);
+}
+
+// Initialize logging
+setupPopupLogging();
+
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('Popup loaded and ready');
+  
   const endpointInput = document.getElementById('endpoint');
   const methodSelect = document.getElementById('method');
   const jsCodeTextarea = document.getElementById('jsCode');
   const startButton = document.getElementById('startWatching');
   const stopButton = document.getElementById('stopWatching');
   const clearButton = document.getElementById('clearResults');
+  const viewLogsButton = document.getElementById('viewLogs');
   const statusDiv = document.getElementById('status');
   const resultsDiv = document.getElementById('results');
 
@@ -17,6 +72,7 @@ document.addEventListener('DOMContentLoaded', function() {
   startButton.addEventListener('click', startWatching);
   stopButton.addEventListener('click', stopWatching);
   clearButton.addEventListener('click', clearResults);
+  viewLogsButton.addEventListener('click', openLogsPage);
 
   // Load configuration from storage
   async function loadConfiguration() {
@@ -55,24 +111,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Start watching for requests
   async function startWatching() {
+    console.log('User clicked Start Watching button');
+    
     const endpoint = endpointInput.value.trim();
     const jsCode = jsCodeTextarea.value.trim();
 
+    console.log('Validating input - endpoint:', endpoint, 'jsCode length:', jsCode.length);
+
     if (!endpoint) {
+      console.warn('No endpoint provided by user');
       alert('Please enter an endpoint to watch');
       return;
     }
 
     if (!jsCode) {
+      console.warn('No JavaScript code provided by user');
       alert('Please enter JavaScript code with an index function');
       return;
     }
 
     // Validate JavaScript code has index function
     if (!jsCode.includes('function index(')) {
+      console.warn('JavaScript code does not contain index function');
       alert('JavaScript code must contain a function named "index"');
       return;
     }
+
+    console.log('Input validation passed, saving configuration and starting watch');
 
     await saveConfiguration();
     
@@ -93,8 +158,20 @@ document.addEventListener('DOMContentLoaded', function() {
     updateStatus(false);
   }
 
+  // Open logs page
+  function openLogsPage() {
+    console.log('Opening logs page');
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('logs.html')
+    }).catch(error => {
+      console.error('Failed to open logs page:', error);
+      alert('Failed to open logs page. Please try again.');
+    });
+  }
+
   // Clear results
   async function clearResults() {
+    console.log('Clearing results');
     chrome.runtime.sendMessage({ action: 'clearResults' });
     displayResults([]);
   }
