@@ -6,8 +6,8 @@ importScripts('safe-functions.js');
 // Proxy server configuration
 const PROXY_CONFIG = {
   host: 'localhost',
-  port: 8080,
-  baseUrl: 'http://localhost:8080'
+  port: 8081,
+  baseUrl: 'http://localhost:8081'
 };
 
 // Logging system
@@ -64,7 +64,7 @@ let watchConfig = {
   method: '*',
   jsCode: ''
 };
-let results = [];
+// Note: Results are now handled by proxy server only
 
 // Proxy server integration
 let proxyServerStatus = {
@@ -86,7 +86,6 @@ async function initialize() {
       watchConfig.endpoint = stored.endpoint || '';
       watchConfig.method = stored.method || '*';
       watchConfig.jsCode = stored.jsCode || '';
-      results = stored.results || [];
       console.log('Restoring watch state with config:', watchConfig);
       await startWatching(watchConfig);
     } else {
@@ -190,10 +189,6 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       await clearResults();
       sendResponse({ success: true });
       break;
-    case 'httpRequestIntercepted':
-      await handleInterceptedRequest(message.data);
-      sendResponse({ success: true });
-      break;
     case 'addLog':
       handleLogFromContentScript(message.logEntry);
       sendResponse({ success: true });
@@ -203,12 +198,9 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       sendResponse({ status: proxyServerStatus });
       break;
     case 'getResults':
-      // Merge local and proxy results
+      // Get results from proxy server only
       const proxyResults = await getProxyResults();
-      const allResults = [...results, ...proxyResults]
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 50);
-      sendResponse({ results: allResults });
+      sendResponse({ results: proxyResults });
       break;
     default:
       sendResponse({ success: false, error: 'Unknown action' });
@@ -216,9 +208,9 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   return true; // Keep message channel open for async response
 });
 
-// Start watching for requests
+// Start watching for requests (proxy-only)
 async function startWatching(config) {
-  console.log('Starting to watch requests for endpoint:', config.endpoint);
+  console.log('Starting proxy-only request watching for endpoint:', config.endpoint);
   
   watchConfig = {
     endpoint: config.endpoint,
@@ -243,13 +235,12 @@ async function startWatching(config) {
   if (proxyServerStatus.isRunning) {
     await syncConfigWithProxy();
     console.log('Using proxy server for enhanced response body access');
+    startRequestMonitoring();
+    console.log('Proxy-based request monitoring started successfully');
   } else {
-    console.log('Proxy server not available, using webRequest API (limited response body access)');
+    console.error('Proxy server not available - monitoring cannot start');
+    console.log('Please start the proxy server with: node proxy-server.js');
   }
-
-  startRequestMonitoring();
-  
-  console.log('Request monitoring started successfully');
   
   // Notify popup
   notifyPopup('statusUpdate', { isWatching: true, proxyStatus: proxyServerStatus });
@@ -277,283 +268,137 @@ async function stopWatching() {
   notifyPopup('statusUpdate', { isWatching: false, proxyStatus: proxyServerStatus });
 }
 
-// Clear results
+// Clear results (proxy-only)
 async function clearResults() {
-  console.log('Clearing all results');
+  console.log('Clearing proxy server results');
   
-  results = [];
+  // Clear local storage
   await chrome.storage.local.set({ results: [] });
   
-  console.log('Results cleared successfully');
+  // Note: Proxy server results are managed by the proxy server itself
+  console.log('Local results cleared successfully');
 }
 
-// Start monitoring HTTP requests
+// Start monitoring HTTP requests (proxy-only)
 function startRequestMonitoring() {
-  if (!chrome.webRequest.onBeforeRequest.hasListener(handleRequest)) {
-    chrome.webRequest.onBeforeRequest.addListener(
-      handleRequest,
-      { urls: ["<all_urls>"] },
-      ["requestBody"]
-    );
-  }
-  
-  if (!chrome.webRequest.onCompleted.hasListener(handleResponse)) {
-    chrome.webRequest.onCompleted.addListener(
-      handleResponse,
-      { urls: ["<all_urls>"] },
-      ["responseHeaders"]
-    );
-  }
-
-  // Add redirect listener for proxy integration
-  if (proxyServerStatus.isRunning && !chrome.webRequest.onBeforeRequest.hasListener(handleProxyRedirect)) {
-    chrome.webRequest.onBeforeRequest.addListener(
-      handleProxyRedirect,
-      { urls: ["<all_urls>"] },
-      ["blocking", "requestBody"]
-    );
+  // Inject content script for proxy communication
+  if (proxyServerStatus.isRunning) {
+    console.log('Starting proxy-based request monitoring');
+    injectProxyContentScript();
+  } else {
+    console.warn('Proxy server not running - no request monitoring available');
   }
 }
 
-// Stop monitoring HTTP requests
+// Stop monitoring HTTP requests (proxy-only)
 function stopRequestMonitoring() {
-  if (chrome.webRequest.onBeforeRequest.hasListener(handleRequest)) {
-    chrome.webRequest.onBeforeRequest.removeListener(handleRequest);
-  }
-  
-  if (chrome.webRequest.onCompleted.hasListener(handleResponse)) {
-    chrome.webRequest.onCompleted.removeListener(handleResponse);
-  }
+  console.log('Stopped proxy-based request monitoring');
+  // No webRequest listeners to remove in proxy-only mode
+}
 
-  if (chrome.webRequest.onBeforeRequest.hasListener(handleProxyRedirect)) {
-    chrome.webRequest.onBeforeRequest.removeListener(handleProxyRedirect);
+// Inject content script for proxy communication
+async function injectProxyContentScript() {
+  try {
+    // Get all tabs
+    const tabs = await chrome.tabs.query({});
+    
+    for (const tab of tabs) {
+      // Skip chrome:// and other restricted URLs
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || 
+          tab.url.startsWith('moz-extension://') || tab.url.startsWith('edge://')) {
+        continue;
+      }
+      
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: injectProxyInterceptor,
+          args: [PROXY_CONFIG, watchConfig]
+        });
+        console.log('Injected proxy interceptor into tab:', tab.url);
+      } catch (error) {
+        console.log('Could not inject into tab:', tab.url, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error injecting proxy content script:', error);
   }
 }
 
-// Store request details for later processing
-const requestData = new Map();
-
-// Handle proxy redirect for matching requests
-function handleProxyRedirect(details) {
-  if (!isWatching || !proxyServerStatus.isRunning) return {};
-
-  // Check if this request matches our endpoint
-  if (!matchesEndpoint(details.url, details.method)) {
-    return {};
+// Function to be injected into pages for proxy interception
+function injectProxyInterceptor(proxyConfig, watchConfig) {
+  // Only inject once
+  if (window.httpWatcherProxyInjected) return;
+  window.httpWatcherProxyInjected = true;
+  
+  console.log('[HTTP-Watcher] Proxy interceptor injected');
+  
+  // Store original fetch and XMLHttpRequest
+  const originalFetch = window.fetch;
+  const originalXHROpen = XMLHttpRequest.prototype.open;
+  const originalXHRSend = XMLHttpRequest.prototype.send;
+  
+  // Helper function to check if URL matches endpoint pattern
+  function matchesEndpoint(url, method) {
+    if (!watchConfig.endpoint) return false;
+    
+    if (watchConfig.method !== '*' && watchConfig.method !== method) {
+      return false;
+    }
+    
+    const endpointPattern = watchConfig.endpoint
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\\\*/g, '.*');
+    
+    const regex = new RegExp(endpointPattern, 'i');
+    return regex.test(url);
   }
-
-  console.log('Redirecting request through proxy:', details.url);
-
-  // Redirect through proxy server
-  return {
-    redirectUrl: `${PROXY_CONFIG.baseUrl}/proxy`,
-    requestHeaders: [
-      ...details.requestHeaders || [],
-      { name: 'X-Target-URL', value: details.url }
-    ]
+  
+  // Override fetch to route through proxy when needed
+  window.fetch = async function(input, init = {}) {
+    const url = typeof input === 'string' ? input : input.url;
+    const method = init.method || 'GET';
+    
+    // Check if we should proxy this request
+    if (matchesEndpoint(url, method)) {
+      console.log('[HTTP-Watcher] Routing fetch request through proxy:', url);
+      
+      // Route through proxy
+      return originalFetch(`${proxyConfig.baseUrl}/proxy`, {
+        ...init,
+        headers: {
+          ...init.headers,
+          'X-Target-URL': url
+        }
+      });
+    }
+    
+    return originalFetch(input, init);
   };
-}
-
-// Handle request start (for non-proxy monitoring)
-function handleRequest(details) {
-  if (!isWatching || proxyServerStatus.isRunning) return; // Skip if using proxy
   
-  console.log('Intercepting request:', details.method, details.url);
-  
-  requestData.set(details.requestId, {
-    url: details.url,
-    method: details.method,
-    requestBody: details.requestBody,
-    timestamp: Date.now()
-  });
-}
-
-// Handle request completion (for non-proxy monitoring)
-async function handleResponse(details) {
-  if (!isWatching || proxyServerStatus.isRunning) return; // Skip if using proxy
-  
-  console.log('Handling response for:', details.url, 'Status:', details.statusCode);
-  
-  const requestInfo = requestData.get(details.requestId);
-  if (!requestInfo) {
-    return;
-  }
-
-  requestData.delete(details.requestId);
-
-  if (!matchesEndpoint(requestInfo.url, requestInfo.method)) {
-    return;
-  }
-
-  console.log('Request matches endpoint! Processing...', requestInfo.url);
-
-  try {
-    // Prepare response object (limited by webRequest API)
-    const responseObject = {
-      url: requestInfo.url,
-      method: requestInfo.method,
-      status: details.statusCode,
-      headers: details.responseHeaders || [],
-      body: { 
-        message: 'Response body not available via webRequest API. Use proxy server for full access.',
-        note: 'Start proxy server with: node proxy-server.js'
-      },
-      requestBody: requestInfo.requestBody
-    };
+  // Override XMLHttpRequest
+  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+    this._httpWatcherMethod = method;
+    this._httpWatcherUrl = url;
+    this._httpWatcherShouldProxy = matchesEndpoint(url, method);
     
-    const result = await executeUserCodeSimple(responseObject);
-    
-    const resultEntry = {
-      timestamp: Date.now(),
-      url: requestInfo.url,
-      method: requestInfo.method,
-      status: details.statusCode,
-      result: result
-    };
-    
-    results.unshift(resultEntry);
-    results = results.slice(0, 50);
-    
-    await chrome.storage.local.set({ results: results });
-    notifyPopup('newResult', resultEntry);
-    
-  } catch (error) {
-    console.error('Error processing response:', error);
-    
-    const errorEntry = {
-      timestamp: Date.now(),
-      url: requestInfo.url,
-      method: requestInfo.method,
-      status: details.statusCode,
-      result: 'Error: ' + error.message
-    };
-    
-    results.unshift(errorEntry);
-    results = results.slice(0, 50);
-    
-    await chrome.storage.local.set({ results: results });
-    notifyPopup('newResult', errorEntry);
-  }
-}
-
-// Check if URL matches the configured endpoint
-function matchesEndpoint(url, method) {
-  if (!watchConfig.endpoint) return false;
-  
-  if (watchConfig.method !== '*' && watchConfig.method !== method) {
-    return false;
-  }
-  
-  const endpointPattern = watchConfig.endpoint
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\\\*/g, '.*');
-  
-  const regex = new RegExp(endpointPattern, 'i');
-  return regex.test(url);
-}
-
-// Execute user's JavaScript code safely
-async function executeUserCodeSimple(responseObject) {
-  try {
-    console.log('Executing user code for request:', responseObject.url);
-    
-    // Check for new BUILDIN_ naming convention
-    if (watchConfig.jsCode.includes('BUILDIN_birdeye-metrics')) {
-      console.log('Using BUILDIN_birdeye-metrics function');
-      return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
+    if (this._httpWatcherShouldProxy) {
+      console.log('[HTTP-Watcher] Routing XHR through proxy:', url);
+      // Modify to go through proxy
+      return originalXHROpen.call(this, method, `${proxyConfig.baseUrl}/proxy`, async, user, password);
     }
     
-    if (watchConfig.jsCode.includes('BUILDIN_simple-log')) {
-      console.log('Using BUILDIN_simple-log function');
-      return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
-    }
-    
-    if (watchConfig.jsCode.includes('BUILDIN_count-records')) {
-      console.log('Using BUILDIN_count-records function');
-      return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
-    }
-    
-    // Legacy support
-    if (watchConfig.jsCode.includes('monthly-sum') || watchConfig.jsCode.includes('PRICE_DATA')) {
-      console.log('Using legacy monthly-sum function');
-      return SAFE_FUNCTIONS['BUILDIN_birdeye-metrics'](responseObject);
-    }
-    
-    if (watchConfig.jsCode.includes('simple-log')) {
-      console.log('Using legacy simple-log function');
-      return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
-    }
-    
-    if (watchConfig.jsCode.includes('count-records')) {
-      console.log('Using legacy count-records function');
-      return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
-    }
-    
-    console.log('No matching predefined function found, returning basic summary');
-    return `Request processed:
-URL: ${responseObject.url}
-Status: ${responseObject.status}
-Method: ${responseObject.method}
-Note: Use predefined functions like 'BUILDIN_birdeye-metrics' for data processing.
-Tip: Start proxy server (node proxy-server.js) for full response body access.`;
-    
-  } catch (error) {
-    console.error('Code execution error:', error);
-    return 'Execution error: ' + error.message;
-  }
-}
-
-// Handle intercepted requests from content script
-async function handleInterceptedRequest(requestData) {
-  if (!isWatching) return;
+    return originalXHROpen.call(this, method, url, async, user, password);
+  };
   
-  if (!matchesEndpoint(requestData.url, requestData.method)) {
-    return;
-  }
-  
-  try {
-    const responseObject = {
-      url: requestData.url,
-      method: requestData.method,
-      status: requestData.status,
-      headers: requestData.headers || {},
-      body: requestData.body,
-      requestData: requestData.requestData || requestData.requestOptions
-    };
+  XMLHttpRequest.prototype.send = function(data) {
+    if (this._httpWatcherShouldProxy) {
+      // Set the target URL header for proxy
+      this.setRequestHeader('X-Target-URL', this._httpWatcherUrl);
+    }
     
-    const result = await executeUserCodeSimple(responseObject);
-    
-    const resultEntry = {
-      timestamp: Date.now(),
-      url: requestData.url,
-      method: requestData.method,
-      status: requestData.status,
-      result: result
-    };
-    
-    results.unshift(resultEntry);
-    results = results.slice(0, 50);
-    
-    await chrome.storage.local.set({ results: results });
-    notifyPopup('newResult', resultEntry);
-    
-  } catch (error) {
-    console.error('Error processing intercepted request:', error);
-    
-    const errorEntry = {
-      timestamp: Date.now(),
-      url: requestData.url,
-      method: requestData.method,
-      status: requestData.status,
-      result: 'Error: ' + error.message
-    };
-    
-    results.unshift(errorEntry);
-    results = results.slice(0, 50);
-    
-    await chrome.storage.local.set({ results: results });
-    notifyPopup('newResult', errorEntry);
-  }
+    return originalXHRSend.call(this, data);
+  };
 }
 
 // Handle log entries from content scripts

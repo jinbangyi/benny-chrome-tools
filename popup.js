@@ -151,15 +151,15 @@ function updateProxyStatusUI() {
   if (proxyStatus.isRunning) {
     proxyStatusDiv.className = 'proxy-status proxy-running';
     proxyStatusDiv.innerHTML = `
-      ✅ Proxy Server Running (Port: ${proxyStatus.port || 8080})
-      <br><small>Enhanced response body access enabled</small>
+      ✅ Proxy Server Running (Port: ${proxyStatus.port || 8081})
+      <br><small>✨ Proxy-only mode: Full response body access enabled</small>
     `;
   } else {
     proxyStatusDiv.className = 'proxy-status proxy-stopped';
     proxyStatusDiv.innerHTML = `
-      ❌ Proxy Server Not Running
-      <br><small>Limited to webRequest API (no response body access)</small>
-      <br><small>Run: <code>node proxy-server.js</code> for full features</small>
+      ❌ Proxy Server Required
+      <br><small>⚠️ Extension requires proxy server to function</small>
+      <br><small>Run: <code>node proxy-server.js</code> to start</small>
     `;
   }
 }
@@ -176,6 +176,13 @@ async function startWatching() {
   
   if (!jsCode) {
     alert('Please enter some JavaScript code to execute');
+    return;
+  }
+  
+  // Check proxy server status first
+  await checkProxyStatus();
+  if (!proxyStatus.isRunning) {
+    alert('❌ Proxy server is required but not running.\n\nPlease start the proxy server first:\nnode proxy-server.js');
     return;
   }
   
