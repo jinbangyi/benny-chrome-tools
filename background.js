@@ -102,7 +102,17 @@ async function initialize() {
 // Check if proxy server is running
 async function checkProxyServerStatus() {
   try {
-    const response = await fetch(`${PROXY_CONFIG.baseUrl}/status`);
+    console.log('Checking proxy server status at:', PROXY_CONFIG.baseUrl);
+    
+    const response = await fetch(`${PROXY_CONFIG.baseUrl}/status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Proxy status response status:', response.status);
+    
     if (response.ok) {
       const status = await response.json();
       proxyServerStatus = {
@@ -112,15 +122,32 @@ async function checkProxyServerStatus() {
       };
       console.log('Proxy server is running:', status);
       return true;
+    } else {
+      console.log('Proxy server responded with error status:', response.status);
     }
   } catch (error) {
     console.log('Proxy server not available:', error.message);
+    console.log('Error details:', error);
+    
+    // Try a simpler connection test
+    try {
+      console.log('Attempting simple connection test...');
+      const testResponse = await fetch(`${PROXY_CONFIG.baseUrl}/`, {
+        method: 'GET',
+        mode: 'no-cors'  // This won't give us response data but will test connectivity
+      });
+      console.log('Simple connection test completed');
+    } catch (testError) {
+      console.log('Simple connection test also failed:', testError.message);
+    }
   }
   
   proxyServerStatus = {
     isRunning: false,
-    lastCheck: Date.now()
+    lastCheck: Date.now(),
+    error: 'Connection failed'
   };
+  console.log('Proxy server status set to not running');
   return false;
 }
 

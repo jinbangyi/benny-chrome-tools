@@ -131,13 +131,41 @@ async function checkProxyStatus() {
   try {
     console.log('Checking proxy server status...');
     
+    // First try to get status from background script
     const response = await chrome.runtime.sendMessage({ action: 'getProxyStatus' });
+    console.log('Received proxy status response:', response);
     
     if (response && response.status) {
       proxyStatus = response.status;
       updateProxyStatusUI();
       console.log('Proxy status updated:', proxyStatus);
+      return;
     }
+    
+    // If background script method fails, try direct fetch from popup
+    console.log('Background script method failed, trying direct fetch...');
+    try {
+      const directResponse = await fetch('http://localhost:8081/status');
+      if (directResponse.ok) {
+        const directStatus = await directResponse.json();
+        proxyStatus = {
+          isRunning: true,
+          lastCheck: Date.now(),
+          ...directStatus
+        };
+        console.log('Direct fetch successful:', proxyStatus);
+        updateProxyStatusUI();
+        return;
+      }
+    } catch (directError) {
+      console.log('Direct fetch also failed:', directError.message);
+    }
+    
+    // If all methods fail
+    console.warn('All proxy status check methods failed');
+    proxyStatus = { isRunning: false, error: 'All connection methods failed' };
+    updateProxyStatusUI();
+    
   } catch (error) {
     console.error('Error checking proxy status:', error);
     proxyStatus = { isRunning: false, error: error.message };
