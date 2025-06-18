@@ -111,10 +111,29 @@
   <div class="section">
     <h3>Custom JavaScript Code</h3>
     <label for="jsCode">JavaScript Code (must have an 'index' function):</label>
-    <textarea id="jsCode" placeholder="function index(response) {
+    <textarea id="jsCode" placeholder="Choose from predefined functions or write custom code:
+
+1. Monthly Sum (for PRICE_DATA):
+function index(response) {
+  // This will be handled by the 'monthly-sum' function
+  // Just include 'monthly-sum' or 'PRICE_DATA' in your code
+  return 'monthly-sum';
+}
+
+2. Simple Log:
+function index(response) {
+  return 'simple-log';
+}
+
+3. Count Records:
+function index(response) {
+  return 'count-records';
+}
+
+Or write your own custom function:
+function index(response) {
   // Your code here
-  // response contains: { url, method, status, headers, body }
-  return 'Processed: ' + JSON.stringify(response.body);
+  return 'Custom result: ' + JSON.stringify(response.body);
 }"></textarea>
   </div>
 

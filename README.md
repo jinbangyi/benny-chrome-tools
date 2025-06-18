@@ -1,21 +1,82 @@
 # HTTP Request Watcher Chrome Extension
 
-A Chrome extension that monitors HTTP requests and executes custom JavaScript code when requests match specified endpoints.
+A Chrome extension that monitors HTTP requests and executes custom JavaScript code when requests match specified endpoints. **Now CSP-compliant with predefined safe functions!**
 
-## Features
+## ✨ Features
 
 - Monitor HTTP requests to specific endpoints
 - Support for different HTTP methods (GET, POST, PUT, DELETE, PATCH, or any method)
-- Execute custom JavaScript code on matching requests
+- Execute safe predefined functions or custom JavaScript code
 - View results in real-time
 - Persistent configuration and results storage
+- **CSP-compliant**: No more "unsafe-eval" errors!
 
-## Installation
+## 🚀 Quick Start
+
+### Installation
 
 1. Open Chrome and navigate to `chrome://extensions/`
 2. Enable "Developer mode" in the top right corner
 3. Click "Load unpacked" and select the extension folder
 4. The extension icon should appear in your browser toolbar
+
+### Testing
+
+1. **Start the test server**:
+   ```bash
+   node test-server.js
+   ```
+
+2. **Configure the extension**:
+   - Click the extension icon
+   - Set endpoint to: `http://localhost:3000/api/metrics`
+   - Choose a predefined function (see below)
+   - Click "Start Watching"
+
+3. **Test it**:
+   - Visit `http://localhost:3000` in your browser
+   - Click the test buttons to generate requests
+   - Check the extension popup for results
+
+## 🛡️ Predefined Safe Functions
+
+To avoid CSP violations, use these predefined functions:
+
+### 1. Monthly Sum (Perfect for PRICE_DATA)
+```javascript
+function index(response) {
+  return 'monthly-sum';
+}
+```
+**Use case**: Analyzes financial data with timestamps and PRICE_DATA fields
+**Output**: Monthly totals, averages, highest/lowest months, complete breakdown
+
+### 2. Simple Log
+```javascript
+function index(response) {
+  return 'simple-log';
+}
+```
+**Use case**: Basic request logging and debugging
+**Output**: Request details, URL, method, status, response body
+
+### 3. Count Records
+```javascript
+function index(response) {
+  return 'count-records';
+}
+```
+**Use case**: Count items in response arrays
+**Output**: Number of records found in the response
+
+### 4. Custom Functions
+```javascript
+function index(response) {
+  // Your custom logic here
+  return 'Custom result: ' + JSON.stringify(response.body);
+}
+```
+**Note**: Custom functions work best with direct page requests
 
 ## Usage
 

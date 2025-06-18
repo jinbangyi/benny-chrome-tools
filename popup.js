@@ -69,11 +69,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Validate JavaScript code has index function
-    try {
-      const testCode = jsCode + '\nif (typeof index !== "function") throw new Error("index function not found");';
-      new Function(testCode)();
-    } catch (error) {
-      alert('JavaScript code must contain a function named "index": ' + error.message);
+    if (!jsCode.includes('function index(')) {
+      alert('JavaScript code must contain a function named "index"');
       return;
     }
 

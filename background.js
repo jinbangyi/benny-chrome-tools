@@ -1,5 +1,8 @@
 // background.js - Service worker that handles HTTP request monitoring
 
+// Import safe functions
+importScripts('safe-functions.js');
+
 let isWatching = false;
 let watchConfig = {
   endpoint: '',
@@ -163,7 +166,7 @@ async function handleResponse(details) {
     };
     
     // Execute user's JavaScript code
-    const result = await executeUserCode(responseObject);
+    const result = await executeUserCode(responseObject, details.tabId);
     
     // Store result
     const resultEntry = {
@@ -233,23 +236,80 @@ async function getResponseBody(tabId, url) {
   }
 }
 
-// Execute user's JavaScript code
-async function executeUserCode(responseObject) {
+// Execute user's JavaScript code safely
+async function executeUserCode(responseObject, tabId) {
   try {
-    // Create a safe execution environment
-    const userFunction = new Function('response', `
-      ${watchConfig.jsCode}
-      
-      if (typeof index !== 'function') {
-        throw new Error('index function not found');
-      }
-      
-      return index(response);
-    `);
+    // Check if the code is one of our predefined safe functions
+    if (watchConfig.jsCode.includes('BUILDIN_monthly-sum') || watchConfig.jsCode.includes('PRICE_DATA')) {
+      return SAFE_FUNCTIONS['BUILDIN_monthly-sum'](responseObject);
+    }
     
-    return userFunction(responseObject);
+    if (watchConfig.jsCode.includes('simple-log')) {
+      return SAFE_FUNCTIONS['BUILDIN_simple-log'](responseObject);
+    }
+    
+    if (watchConfig.jsCode.includes('count-records')) {
+      return SAFE_FUNCTIONS['BUILDIN_count-records'](responseObject);
+    }
+    
+    // For custom code, try to inject it safely in the page context
+    if (tabId && tabId !== -1) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: (responseData, userCode) => {
+          try {
+            // Create a safe execution environment
+            const func = new Function('response', userCode + '\nreturn index(response);');
+            return func(responseData);
+          } catch (error) {
+            return 'Error: ' + error.message;
+          }
+        },
+        args: [responseObject, watchConfig.jsCode]
+      });
+      
+      return results[0].result;
+    } else {
+      return `Custom code execution not available for this request type.
+URL: ${responseObject.url}
+Status: ${responseObject.status}
+Method: ${responseObject.method}
+
+Use predefined functions like 'monthly-sum' for better compatibility.`;
+    }
+    
   } catch (error) {
-    throw new Error('User code execution failed: ' + error.message);
+    return 'Execution error: ' + error.message;
+  }
+}
+
+// Simpler execution for intercepted requests (no tab context)
+async function executeUserCodeSimple(responseObject) {
+  try {
+    // Use safe functions for intercepted requests
+    if (watchConfig.jsCode.includes('monthly-sum') || watchConfig.jsCode.includes('PRICE_DATA')) {
+      return SAFE_FUNCTIONS['monthly-sum'](responseObject);
+    }
+    
+    if (watchConfig.jsCode.includes('simple-log')) {
+      return SAFE_FUNCTIONS['simple-log'](responseObject);
+    }
+    
+    if (watchConfig.jsCode.includes('count-records')) {
+      return SAFE_FUNCTIONS['count-records'](responseObject);
+    }
+    
+    // For other code, return a basic summary
+    return `Request intercepted:
+URL: ${responseObject.url}
+Status: ${responseObject.status}
+Method: ${responseObject.method}
+Data preview: ${JSON.stringify(responseObject.body).substring(0, 200)}...
+
+Note: Use predefined functions like 'monthly-sum' for data processing.`;
+    
+  } catch (error) {
+    return 'Simple execution error: ' + error.message;
   }
 }
 
@@ -273,8 +333,9 @@ async function handleInterceptedRequest(requestData) {
       requestData: requestData.requestData || requestData.requestOptions
     };
     
-    // Execute user's JavaScript code
-    const result = await executeUserCode(responseObject);
+    // Execute user's JavaScript code - note: no tabId available for intercepted requests
+    // Use a simpler approach for intercepted requests
+    const result = await executeUserCodeSimple(responseObject);
     
     // Store result
     const resultEntry = {
