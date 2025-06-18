@@ -202,36 +202,53 @@ async function getProxyResults() {
 }
 
 // Listen for messages from popup and content scripts
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  switch (message.action) {
-    case 'startWatching':
-      await startWatching(message);
-      sendResponse({ success: true });
-      break;
-    case 'stopWatching':
-      await stopWatching();
-      sendResponse({ success: true });
-      break;
-    case 'clearResults':
-      await clearResults();
-      sendResponse({ success: true });
-      break;
-    case 'addLog':
-      handleLogFromContentScript(message.logEntry);
-      sendResponse({ success: true });
-      break;
-    case 'getProxyStatus':
-      await checkProxyServerStatus();
-      sendResponse({ status: proxyServerStatus });
-      break;
-    case 'getResults':
-      // Get results from proxy server only
-      const proxyResults = await getProxyResults();
-      sendResponse({ results: proxyResults });
-      break;
-    default:
-      sendResponse({ success: false, error: 'Unknown action' });
-  }
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Background received message:', message.action);
+  
+  // Handle async operations properly
+  const handleMessage = async () => {
+    try {
+      switch (message.action) {
+        case 'startWatching':
+          await startWatching(message);
+          sendResponse({ success: true });
+          break;
+        case 'stopWatching':
+          await stopWatching();
+          sendResponse({ success: true });
+          break;
+        case 'clearResults':
+          await clearResults();
+          sendResponse({ success: true });
+          break;
+        case 'addLog':
+          handleLogFromContentScript(message.logEntry);
+          sendResponse({ success: true });
+          break;
+        case 'getProxyStatus':
+          console.log('Processing getProxyStatus request');
+          await checkProxyServerStatus();
+          console.log('Sending proxy status response:', proxyServerStatus);
+          sendResponse({ status: proxyServerStatus });
+          break;
+        case 'getResults':
+          // Get results from proxy server only
+          const proxyResults = await getProxyResults();
+          sendResponse({ results: proxyResults });
+          break;
+        default:
+          console.warn('Unknown message action:', message.action);
+          sendResponse({ success: false, error: 'Unknown action' });
+      }
+    } catch (error) {
+      console.error('Error handling message:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  };
+  
+  // Execute async handler
+  handleMessage();
+  
   return true; // Keep message channel open for async response
 });
 
@@ -331,8 +348,8 @@ async function injectProxyContentScript() {
     
     for (const tab of tabs) {
       // Skip chrome:// and other restricted URLs
-      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || 
-          tab.url.startsWith('moz-extension://') || tab.url.startsWith('edge://')) {
+      if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || 
+          tab.url.startsWith('moz-extension://') || tab.url.startsWith('edge://'))) {
         continue;
       }
       

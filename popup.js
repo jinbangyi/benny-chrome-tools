@@ -132,7 +132,16 @@ async function checkProxyStatus() {
     console.log('Checking proxy server status...');
     
     // First try to get status from background script
-    const response = await chrome.runtime.sendMessage({ action: 'getProxyStatus' });
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'getProxyStatus' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
     console.log('Received proxy status response:', response);
     
     if (response && response.status) {
@@ -217,20 +226,31 @@ async function startWatching() {
   console.log('Starting to watch endpoint:', endpoint);
   
   try {
-    await chrome.runtime.sendMessage({
-      action: 'startWatching',
-      endpoint: endpoint,
-      method: method,
-      jsCode: jsCode
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        action: 'startWatching',
+        endpoint: endpoint,
+        method: method,
+        jsCode: jsCode
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
     });
     
-    isWatching = true;
-    updateUI();
-    
-    console.log('Successfully started watching');
-    
-    // Refresh proxy status
-    await checkProxyStatus();
+    if (response && response.success) {
+      isWatching = true;
+      updateUI();
+      console.log('Successfully started watching');
+      
+      // Refresh proxy status
+      await checkProxyStatus();
+    } else {
+      throw new Error(response ? response.error : 'Failed to start watching');
+    }
     
   } catch (error) {
     console.error('Error starting to watch:', error);
@@ -242,12 +262,23 @@ async function stopWatching() {
   console.log('Stopping watch...');
   
   try {
-    await chrome.runtime.sendMessage({ action: 'stopWatching' });
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'stopWatching' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
     
-    isWatching = false;
-    updateUI();
-    
-    console.log('Successfully stopped watching');
+    if (response && response.success) {
+      isWatching = false;
+      updateUI();
+      console.log('Successfully stopped watching');
+    } else {
+      throw new Error(response ? response.error : 'Failed to stop watching');
+    }
     
   } catch (error) {
     console.error('Error stopping watch:', error);
@@ -301,7 +332,15 @@ function updateUI() {
 async function updateStatus() {
   try {
     // Get results from background script (includes proxy results)
-    const response = await chrome.runtime.sendMessage({ action: 'getResults' });
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'getResults' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
     
     if (response && response.results) {
       displayResults(response.results);
@@ -364,6 +403,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       updateStatus(); // Refresh results display
       break;
   }
+
+  return true;
 });
 
 // Handle popup example clicks
