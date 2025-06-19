@@ -1,0 +1,25 @@
+{
+  "name": "network-monitor-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for monitoring network requests and forwarding events to localhost server",
+  "main": "test-server.js",
+  "scripts": {
+    "start": "node test-server.js",
+    "server": "node test-server.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "chrome-extension",
+    "network-monitoring",
+    "devtools",
+    "http-requests",
+    "debugging"
+  ],
+  "author": "OpenHands",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}

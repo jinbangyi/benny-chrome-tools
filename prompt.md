@@ -1,0 +1,1 @@
+- I want to create a chrome extension which will watch the devtools's network rule based defined by user and send the event(should include the http response body) to localhost's http server(the forward can config by user, default is localhost.

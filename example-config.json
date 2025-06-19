@@ -1,0 +1,51 @@
+{
+  "serverConfig": {
+    "host": "localhost",
+    "port": 3000,
+    "endpoint": "/network-events"
+  },
+  "monitoringRules": [
+    {
+      "id": "1",
+      "name": "API Calls",
+      "type": "contains",
+      "pattern": "/api/",
+      "enabled": true,
+      "created": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2", 
+      "name": "JSON Responses",
+      "type": "endsWith",
+      "pattern": ".json",
+      "enabled": true,
+      "created": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "name": "GraphQL Queries",
+      "type": "regex",
+      "pattern": "graphql|/gql",
+      "flags": "i",
+      "enabled": true,
+      "created": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "4",
+      "name": "User Service",
+      "type": "regex", 
+      "pattern": "https://api\\.example\\.com/users/\\d+",
+      "flags": "i",
+      "enabled": false,
+      "created": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "5",
+      "name": "Authentication Endpoints",
+      "type": "contains",
+      "pattern": "/auth/",
+      "enabled": true,
+      "created": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

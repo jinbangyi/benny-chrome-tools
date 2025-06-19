@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Network Monitor</title>
+  <style>
+    body {
+      width: 350px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h2 {
+      margin: 0;
+      color: #333;
+    }
+
+    .status-section {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .status {
+      font-weight: bold;
+      padding: 8px 16px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .status.active {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .status.inactive {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+
+    .btn-primary {
+      background-color: #007cba;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: #005a87;
+    }
+
+    .btn-secondary {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background-color: #545b62;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .info-section {
+      background: #e7f3ff;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .info-section h4 {
+      margin: 0 0 10px 0;
+      color: #0066cc;
+    }
+
+    .info-section p {
+      margin: 0;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .stat-item {
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #007cba;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .quick-actions {
+      border-top: 1px solid #ddd;
+      padding-top: 15px;
+    }
+
+    .quick-actions h4 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+
+    .action-link {
+      display: block;
+      padding: 8px 0;
+      color: #007cba;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .action-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>Network Monitor</h2>
+  </div>
+
+  <div class="status-section">
+    <div id="status" class="status inactive">Inactive</div>
+    <div id="tabInfo" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn" class="btn btn-primary">Start</button>
+    <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat-item">
+      <div id="rulesCount" class="stat-value">0</div>
+      <div class="stat-label">Rules</div>
+    </div>
+    <div class="stat-item">
+      <div id="eventsCount" class="stat-value">0</div>
+      <div class="stat-label">Events</div>
+    </div>
+  </div>
+
+  <div class="info-section">
+    <h4>How to Use</h4>
+    <p>1. Open DevTools (F12)<br>
+    2. Go to "Network Monitor" tab<br>
+    3. Configure rules and server settings<br>
+    4. Start monitoring to capture network events</p>
+  </div>
+
+  <div class="quick-actions">
+    <h4>Quick Actions</h4>
+    <a href="#" id="openDevTools" class="action-link">Open DevTools Panel</a>
+    <a href="#" id="testConnection" class="action-link">Test Server Connection</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
